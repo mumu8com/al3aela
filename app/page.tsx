@@ -12,6 +12,7 @@ export default function Home(){
   const [posts,setPosts]=useState<Post[]>([]),[content,setContent]=useState(''),[familyName,setFamilyName]=useState('')
   const [busy,setBusy]=useState(false),[menu,setMenu]=useState(false),[search,setSearch]=useState(''),[composer,setComposer]=useState(false),[storyOpen,setStoryOpen]=useState(false),[storyText,setStoryText]=useState(''),[mood,setMood]=useState(''),[stories,setStories]=useState<any[]>([]),[mediaFiles,setMediaFiles]=useState<File[]>([]),[viewStory,setViewStory]=useState<any|null>(null)
   const [notifications,setNotifications]=useState<Notice[]>([]),[showNotifications,setShowNotifications]=useState(false)
+  const [editingPost,setEditingPost]=useState<Post|null>(null),[editText,setEditText]=useState('')
   const [familyError,setFamilyError]=useState(''),[familySuccess,setFamilySuccess]=useState('')
   const loadingRef=useRef(false)
 
