@@ -1,11 +1,11 @@
 'use client'
 import {useState} from 'react'
 import {supabase} from '../../lib/supabase'
-import {useRouter,useSearchParams} from 'next/navigation'
+import {useRouter} from 'next/navigation'
 
 export default function Login(){
   const r=useRouter()
-  const params=useSearchParams()
+  const nextPath=()=>new URLSearchParams(window.location.search).get('next')||'/'
   const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[fullName,setFullName]=useState('')
   const [error,setError]=useState(''),[message,setMessage]=useState(''),[signup,setSignup]=useState(false),[loading,setLoading]=useState(false)
 
@@ -18,7 +18,7 @@ export default function Login(){
     setLoading(false)
     if(res.error){setError(res.error.message);return}
     if(signup&&!res.data.session){setMessage('تم إنشاء الحساب. افتح رسالة تأكيد البريد الإلكتروني ثم سجّل الدخول.');return}
-    r.push(params.get('next')||'/')
+    r.push(nextPath())
   }
 
   async function google(){
