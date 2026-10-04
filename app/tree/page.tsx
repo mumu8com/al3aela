@@ -4,7 +4,7 @@ import {supabase} from '../../lib/supabase'
 import {useRouter} from 'next/navigation'
 
 export default function Tree(){
- const r=useRouter();const [family,setFamily]=useState<any>(null);const [people,setPeople]=useState<any[]>([]);const [fullName,setFullName]=useState('');const [loading,setLoading]=useState(true);const [saving,setSaving]=useState(false);const [error,setError]=useState('')
+ const r=useRouter();const [inviteCode,setInviteCode]=useState('');const [inviteInput,setInviteInput]=useState('');const [inviteBusy,setInviteBusy]=useState(false);const [family,setFamily]=useState<any>(null);const [people,setPeople]=useState<any[]>([]);const [fullName,setFullName]=useState('');const [loading,setLoading]=useState(true);const [saving,setSaving]=useState(false);const [error,setError]=useState('')
 
  useEffect(()=>{load()},[])
 
@@ -21,6 +21,15 @@ export default function Tree(){
   const {data:p,error:peopleError}=await supabase.from('family_people').select('*').eq('family_id',f.id).order('created_at')
   if(peopleError){console.error(peopleError);setError('تعذر تحميل أفراد العائلة.');setPeople([])}else setPeople(p||[])
   setLoading(false)
+ }
+
+ async function createInvite(){
+  if(!family||inviteBusy)return;setInviteBusy(true);setError('')
+  try{const {data,error}=await supabase.from('family_invite_links').insert({family_id:family.id,created_by:(await supabase.auth.getUser()).data.user?.id}).select('code').single();if(error){setError('تعذر إنشاء رابط الدعوة: '+error.message);return}setInviteCode(data.code);await navigator.clipboard?.writeText(window.location.origin+'/join/'+data.code)}finally{setInviteBusy(false)}
+ }
+ async function redeemInvite(){
+  const code=inviteInput.trim();if(!code)return;setInviteBusy(true);setError('')
+  try{const {data,error}=await supabase.rpc('redeem_family_invite',{p_code:code});if(error){setError(error.message);return}setInviteInput('');setFamily(data);await load()}finally{setInviteBusy(false)}
  }
 
  async function add(){
@@ -41,5 +50,5 @@ export default function Tree(){
  <section className="card"><div className="section-title"><h2>أفراد العائلة</h2><span>{people.length} أفراد</span></div>
  {loading?<p>جارٍ التحميل...</p>:error?<div className="family-form-message error" role="alert">{error}</div>:<div className="people-grid">{people.length?people.map(p=><div className="person-card" key={p.id}><div className="avatar large">{(p.full_name||'ع').slice(0,1)}</div><div><b>{p.full_name}</b><small>عضو في العائلة</small></div></div>):<div className="empty"><div>👨‍👩‍👧‍👦</div><h3>ابدأ بإضافة أفراد عائلتك</h3><p>أضف أسماء أفراد الأسرة لبناء الشجرة.</p></div>}</div>}
  {family&&<div className="addrow"><input value={fullName} onChange={e=>{setFullName(e.target.value);setError('')}} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();add()}}} placeholder="اسم فرد من العائلة" aria-label="اسم فرد من العائلة" maxLength={120}/><button className="primary" disabled={saving||!fullName.trim()} onClick={add}>{saving?'جارٍ الإضافة...':'+ إضافة فرد'}</button></div>}
- </section></div></main>
+ </section><section className="card"><div className="section-title"><h2>دعوة أفراد العائلة</h2><span>مشاركة آمنة</span></div>{family?.created_by===undefined||family?.created_by===(null)?null:<p>أنشئ رابط دعوة وشاركه مع أفراد عائلتك للانضمام.</p>}<div className="addrow"><button className="primary" disabled={inviteBusy} onClick={createInvite}>{inviteBusy?'جارٍ الإنشاء...':'🔗 إنشاء رابط دعوة'}</button>{inviteCode&&<input readOnly value={window.location.origin+'/join/'+inviteCode} onFocus={e=>e.currentTarget.select()}/>}</div></section><section className="card"><div className="section-title"><h2>الانضمام برمز دعوة</h2></div><div className="addrow"><input value={inviteInput} onChange={e=>setInviteInput(e.target.value)} placeholder="الصق رمز الدعوة هنا"/><button className="primary" disabled={inviteBusy||!inviteInput.trim()} onClick={redeemInvite}>انضمام</button></div></section></div></main>
 }
