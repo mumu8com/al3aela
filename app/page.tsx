@@ -1,55 +1,138 @@
 'use client'
-import {useEffect,useState} from 'react'
+import {useEffect,useMemo,useState} from 'react'
 import {supabase} from '../lib/supabase'
 import {useRouter} from 'next/navigation'
 
+type Post={id:string;content:string;created_at:string;author_id:string;author_name?:string;likes:number;liked:boolean;comments:any[];commentText:string}
+type Notice={id:string;message:string;read_at:string|null;created_at:string}
+
 export default function Home(){
   const r=useRouter()
-  const [session,setSession]=useState<any>(null),[name,setName]=useState(''),[family,setFamily]=useState<any>(null),[posts,setPosts]=useState<any[]>([]),[content,setContent]=useState(''),[busy,setBusy]=useState(false),[menu,setMenu]=useState(false)
+  const [session,setSession]=useState<any>(null),[name,setName]=useState(''),[family,setFamily]=useState<any>(null)
+  const [posts,setPosts]=useState<Post[]>([]),[content,setContent]=useState(''),[familyName,setFamilyName]=useState('')
+  const [busy,setBusy]=useState(false),[menu,setMenu]=useState(false),[search,setSearch]=useState('')
+  const [notifications,setNotifications]=useState<Notice[]>([]),[showNotifications,setShowNotifications]=useState(false)
+
   useEffect(()=>{supabase.auth.getSession().then(({data})=>{if(!data.session) r.replace('/login'); else {setSession(data.session);load(data.session.user.id)}})},[])
+
   async function load(uid:string){
-    const {data:pf}=await supabase.from('profiles').select('full_name').eq('id',uid).maybeSingle(); setName(pf?.full_name||'')
+    const {data:pf}=await supabase.from('profiles').select('full_name').eq('id',uid).maybeSingle()
+    setName(pf?.full_name||'')
     const {data:fm}=await supabase.from('family_members').select('family_id,role,families(id,name,description)').eq('user_id',uid)
-    const f=(fm||[])[0]?.families; setFamily(f||null)
-    if(f){const {data:p}=await supabase.from('posts').select('id,content,created_at,author_id').eq('family_id',(f as any).id).order('created_at',{ascending:false});setPosts(p||[])}
+    const f=(fm||[])[0]?.families
+    setFamily(f||null)
+    const {data:n}=await supabase.from('notifications').select('id,message,read_at,created_at').eq('user_id',uid).order('created_at',{ascending:false}).limit(20)
+    setNotifications(n||[])
+    if(f) await loadPosts(f.id,uid)
   }
+
+  async function loadPosts(familyId:string,uid:string){
+    const {data:p}=await supabase.from('posts').select('id,content,created_at,author_id').eq('family_id',familyId).order('created_at',{ascending:false}).limit(50)
+    const postsRaw=p||[]
+    const ids=postsRaw.map(x=>x.id), authors=[...new Set(postsRaw.map(x=>x.author_id))]
+    const [{data:profiles},{data:likes},{data:comments}]=await Promise.all([
+      authors.length?supabase.from('profiles').select('id,full_name').in('id',authors):Promise.resolve({data:[] as any[]}),
+      ids.length?supabase.from('post_likes').select('post_id,user_id').in('post_id',ids):Promise.resolve({data:[] as any[]}),
+      ids.length?supabase.from('comments').select('id,post_id,author_id,content,created_at').in('post_id',ids).order('created_at',{ascending:true}):Promise.resolve({data:[] as any[]})
+    ])
+    const authorMap=new Map((profiles||[]).map((x:any)=>[x.id,x.full_name]))
+    const commentAuthors=[...new Set((comments||[]).map((x:any)=>x.author_id))]
+    let cp:any[]=[]
+    if(commentAuthors.length){const {data}=await supabase.from('profiles').select('id,full_name').in('id',commentAuthors);cp=data||[]}
+    const commentMap=new Map(cp.map(x=>[x.id,x.full_name]))
+    setPosts(postsRaw.map((x:any)=>({
+      ...x,author_name:authorMap.get(x.author_id)||'أحد أفراد العائلة',
+      likes:(likes||[]).filter((l:any)=>l.post_id===x.id).length,
+      liked:(likes||[]).some((l:any)=>l.post_id===x.id&&l.user_id===uid),
+      comments:(comments||[]).filter((c:any)=>c.post_id===x.id).map((c:any)=>({...c,author_name:commentMap.get(c.author_id)||'عضو العائلة'})),
+      commentText:''
+    })))
+  }
+
   async function createFamily(){
-    if(!name.trim())return; setBusy(true)
-    const {data:{user}}=await supabase.auth.getUser(); if(!user){r.replace('/login');return}
-    const {data:f,error}=await supabase.from('families').insert({name:name.trim(),created_by:user.id}).select().single()
-    if(error){alert(error.message)} else if(f){const {error:e}=await supabase.from('family_members').insert({family_id:f.id,user_id:user.id,role:'admin'});if(e)alert(e.message);else setFamily(f)}
+    if(!familyName.trim()||!session)return
+    setBusy(true)
+    const {data:f,error}=await supabase.from('families').insert({name:familyName.trim(),created_by:session.user.id}).select().single()
+    if(error) alert(error.message)
+    else if(f){
+      const {error:e}=await supabase.from('family_members').insert({family_id:f.id,user_id:session.user.id,role:'admin'})
+      if(e) alert(e.message); else {setFamily(f);await loadPosts(f.id,session.user.id)}
+    }
     setBusy(false)
   }
+
   async function post(){
     if(!content.trim()||!family||!session)return
     const {data:p,error}=await supabase.from('posts').insert({family_id:family.id,author_id:session.user.id,content:content.trim()}).select().single()
-    if(error)alert(error.message); else if(p){setPosts([p,...posts]);setContent('')}
+    if(error) alert(error.message); else if(p){setContent('');await loadPosts(family.id,session.user.id)}
   }
+
+  async function toggleLike(p:Post){
+    if(!session)return
+    if(p.liked){
+      await supabase.from('post_likes').delete().eq('post_id',p.id).eq('user_id',session.user.id)
+    }else{
+      const {error}=await supabase.from('post_likes').insert({post_id:p.id,user_id:session.user.id})
+      if(error){alert(error.message);return}
+    }
+    setPosts(prev=>prev.map(x=>x.id===p.id?{...x,liked:!x.liked,likes:Math.max(0,x.likes+(x.liked?-1:1))}:x))
+  }
+
+  async function addComment(p:Post){
+    if(!session||!p.commentText.trim())return
+    const {data,error}=await supabase.from('comments').insert({post_id:p.id,author_id:session.user.id,content:p.commentText.trim()}).select().single()
+    if(error){alert(error.message);return}
+    setPosts(prev=>prev.map(x=>x.id===p.id?{...x,commentText:'',comments:[...x.comments,{...data,author_name:name||'عضو العائلة'}]}:x))
+  }
+
+  async function share(p:Post){
+    try{await navigator.clipboard.writeText(p.content);alert('تم نسخ المنشور لمشاركته')}catch{alert('تعذر نسخ المنشور')}
+  }
+
+  async function markRead(n:Notice){
+    if(n.read_at)return
+    await supabase.from('notifications').update({read_at:new Date().toISOString()}).eq('id',n.id)
+    setNotifications(x=>x.map(y=>y.id===n.id?{...y,read_at:new Date().toISOString()}:y))
+  }
+
   async function logout(){await supabase.auth.signOut();r.replace('/login')}
-  if(!session)return null
   const initial=(name||'ع').slice(0,1)
+  const filtered=useMemo(()=>posts.filter(p=>(p.content+' '+p.author_name).toLowerCase().includes(search.toLowerCase())),[posts,search])
+  const unread=notifications.filter(n=>!n.read_at).length
+
+  if(!session)return null
   return <main className="fbapp">
     <header className="topbar">
       <button className="brand" onClick={()=>r.push('/')}>العائلة <span>al3aela</span></button>
-      <div className="topsearch">🔎 <input placeholder="بحث في العائلة"/></div>
-      <nav className="topnav"><button onClick={()=>r.push('/')}>⌂<span>الرئيسية</span></button><button onClick={()=>r.push('/tree')}>🌳<span>الشجرة</span></button><button onClick={()=>r.push('/profile')}>👤<span>ملفي</span></button><button onClick={()=>setMenu(!menu)}>☰</button></nav>
+      <div className="topsearch">🔎 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث في العائلة"/></div>
+      <nav className="topnav">
+        <button onClick={()=>r.push('/')}>⌂<span>الرئيسية</span></button><button onClick={()=>r.push('/tree')}>🌳<span>الشجرة</span></button>
+        <button onClick={()=>r.push('/profile')}>👤<span>ملفي</span></button>
+        <button className="notify-btn" onClick={()=>setShowNotifications(!showNotifications)}>🔔{unread>0&&<b>{unread}</b>}</button>
+        <button onClick={()=>setMenu(!menu)}>☰</button>
+      </nav>
+      {showNotifications&&<div className="notifications"><h3>الإشعارات</h3>{notifications.length?notifications.map(n=><button className={n.read_at?'read':''} key={n.id} onClick={()=>markRead(n)}><span>{n.type==='like'?'👍':'💬'}</span><div><b>{n.message}</b><small>{new Date(n.created_at).toLocaleString('ar-LY')}</small></div></button>):<p>لا توجد إشعارات</p>}</div>}
       {menu&&<div className="dropdown"><button onClick={()=>r.push('/profile')}>الملف الشخصي</button><button onClick={logout}>تسجيل الخروج</button></div>}
     </header>
     <div className="fb-layout">
       <aside className="sidebar">
         <button className="profile-link" onClick={()=>r.push('/profile')}><span className="avatar">{initial}</span><b>{name||'حسابي'}</b></button>
-        <button onClick={()=>r.push('/')}>🏠 <span>الرئيسية</span></button>
-        <button onClick={()=>r.push('/tree')}>🌳 <span>شجرة العائلة</span></button>
-        <button onClick={()=>r.push('/profile')}>👤 <span>الملف الشخصي</span></button>
+        <button onClick={()=>r.push('/')}>🏠 <span>الرئيسية</span></button><button onClick={()=>r.push('/tree')}>🌳 <span>شجرة العائلة</span></button><button onClick={()=>r.push('/profile')}>👤 <span>الملف الشخصي</span></button>
         {family&&<div className="side-family"><small>العائلة</small><strong>👨‍👩‍👧‍👦 {family.name}</strong></div>}
       </aside>
       <section className="feed">
         <div className="welcome card"><div className="cover"></div><div className="welcome-body"><div className="avatar large">{initial}</div><div><h1>أهلاً {name||'بك'} 👋</h1><p>شارك أخبارك وذكرياتك مع أفراد عائلتك.</p></div></div></div>
-        {!family?<div className="card create-family"><h2>أنشئ عائلتك</h2><p>ابدأ مساحة العائلة ثم أضف أفراد الأسرة وشارك المنشورات.</p><input value={name} onChange={e=>setName(e.target.value)} placeholder="اسم العائلة"/><button className="primary" disabled={busy} onClick={createFamily}>{busy?'جارٍ الإنشاء...':'إنشاء العائلة'}</button></div>:
+        {!family?<div className="card create-family"><h2>أنشئ عائلتك</h2><p>ابدأ مساحة العائلة ثم أضف أفراد الأسرة وشارك المنشورات.</p><input value={familyName} onChange={e=>setFamilyName(e.target.value)} placeholder="اسم العائلة"/><button className="primary" disabled={busy} onClick={createFamily}>{busy?'جارٍ الإنشاء...':'إنشاء العائلة'}</button></div>:
         <>
           <div className="card composer"><div className="composer-row"><div className="avatar">{initial}</div><textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="ماذا تريد أن تشارك مع عائلتك؟"/></div><div className="composer-actions"><span>📷 صورة</span><span>🎥 فيديو</span><span>😊 شعور</span><button className="primary" onClick={post}>نشر</button></div></div>
-          {posts.length===0&&<div className="card empty"><div>📝</div><h3>لا توجد منشورات بعد</h3><p>كن أول فرد في العائلة ينشر شيئاً.</p></div>}
-          {posts.map(p=><article className="card post" key={p.id}><div className="post-head"><div className="avatar">{initial}</div><div><b>{name||'أحد أفراد العائلة'}</b><small>{new Date(p.created_at).toLocaleString('ar-LY')}</small></div><button className="dots">•••</button></div><p className="post-text">{p.content}</p><div className="post-meta"><span>♡ أعجبني</span><span>💬 تعليق</span><span>↗ مشاركة</span></div></article>)}
+          {filtered.length===0&&<div className="card empty"><div>📝</div><h3>{search?'لا توجد نتائج':'لا توجد منشورات بعد'}</h3><p>{search?'جرّب كلمة بحث أخرى.':'كن أول فرد في العائلة ينشر شيئاً.'}</p></div>}
+          {filtered.map(p=><article className="card post" key={p.id}>
+            <div className="post-head"><div className="avatar">{(p.author_name||'ع').slice(0,1)}</div><div><b>{p.author_name}</b><small>{new Date(p.created_at).toLocaleString('ar-LY')}</small></div><button className="dots">•••</button></div>
+            <p className="post-text">{p.content}</p>
+            <div className="post-meta"><button className={p.liked?'liked':''} onClick={()=>toggleLike(p)}>👍 أعجبني <small>{p.likes}</small></button><button onClick={()=>document.getElementById('comment-'+p.id)?.focus()}>💬 تعليق <small>{p.comments.length}</small></button><button onClick={()=>share(p)}>↗ مشاركة</button></div>
+            {p.comments.length>0&&<div className="comments">{p.comments.map(c=><div className="comment" key={c.id}><div className="avatar">{(c.author_name||'ع').slice(0,1)}</div><div><b>{c.author_name}</b><p>{c.content}</p></div></div>)}</div>}
+            <div className="comment-box"><div className="avatar">{initial}</div><input id={'comment-'+p.id} value={p.commentText} onChange={e=>setPosts(prev=>prev.map(x=>x.id===p.id?{...x,commentText:e.target.value}:x))} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addComment(p)}}} placeholder="اكتب تعليقاً..."/><button className="primary" onClick={()=>addComment(p)}>إرسال</button></div>
+          </article>)}
         </>}
       </section>
       <aside className="rightbar"><div className="card"><h3>اختصارات العائلة</h3><button onClick={()=>r.push('/tree')}>🌳 شجرة العائلة <small>الأفراد والروابط</small></button><button onClick={()=>r.push('/profile')}>👤 ملفي الشخصي <small>تعديل بياناتك</small></button></div><div className="card tips"><h3>مساحتكم العائلية</h3><p>هذه شبكة خاصة بعائلتك. أضف الأفراد وابدأ مشاركة الذكريات.</p></div></aside>
