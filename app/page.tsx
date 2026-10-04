@@ -10,7 +10,7 @@ export default function Home(){
   const r=useRouter()
   const [session,setSession]=useState<any>(null),[name,setName]=useState(''),[family,setFamily]=useState<any>(null)
   const [posts,setPosts]=useState<Post[]>([]),[content,setContent]=useState(''),[familyName,setFamilyName]=useState('')
-  const [busy,setBusy]=useState(false),[menu,setMenu]=useState(false),[search,setSearch]=useState('')
+  const [busy,setBusy]=useState(false),[menu,setMenu]=useState(false),[search,setSearch]=useState(''),[composer,setComposer]=useState(false),[storyOpen,setStoryOpen]=useState(false),[storyText,setStoryText]=useState(''),[mood,setMood]=useState(''),[stories,setStories]=useState<any[]>([]),[commentOpen,setCommentOpen]=useState<string|null>(null)
   const [notifications,setNotifications]=useState<Notice[]>([]),[showNotifications,setShowNotifications]=useState(false)
 
   useEffect(()=>{supabase.auth.getSession().then(({data})=>{if(!data.session) r.replace('/login'); else {setSession(data.session);load(data.session.user.id)}})},[])
@@ -24,7 +24,7 @@ export default function Home(){
     setFamily(f||null)
     const {data:n}=await supabase.from('notifications').select('id,message,type,read_at,created_at').eq('user_id',uid).order('created_at',{ascending:false}).limit(20)
     setNotifications(n||[])
-    if(f) await loadPosts(f.id,uid)
+    if(f){await loadPosts(f.id,uid);const {data:s}=await supabase.from('stories').select('id,content,author_id,mood,created_at').eq('family_id',f.id).order('created_at',{ascending:false}).limit(20);setStories(s||[])}
   }
 
   async function loadPosts(familyId:string,uid:string){
@@ -62,7 +62,9 @@ export default function Home(){
     setBusy(false)
   }
 
-  async function post(){
+  async function publishStory(){if(!storyText.trim()||!family||!session)return;setBusy(true);const {error}=await supabase.from('stories').insert({family_id:family.id,author_id:session.user.id,content:storyText.trim(),mood:mood||null});if(error)alert(error.message);else{setStoryText('');setMood('');setStoryOpen(false);const {data:s}=await supabase.from('stories').select('id,content,author_id,mood,created_at').eq('family_id',family.id).order('created_at',{ascending:false}).limit(20);setStories(s||[])}setBusy(false)}
+async function publishPost(){if(!content.trim()||!family||!session)return;setBusy(true);const {error}=await supabase.from('posts').insert({family_id:family.id,author_id:session.user.id,content:content.trim(),post_type:mood?'feeling':'post',mood:mood||null});if(error)alert(error.message);else{setContent('');setMood('');setComposer(false);await loadPosts(family.id,session.user.id)}setBusy(false)}
+async function post(){
     if(!content.trim()||!family||!session)return
     const {data:p,error}=await supabase.from('posts').insert({family_id:family.id,author_id:session.user.id,content:content.trim()}).select().single()
     if(error) alert(error.message); else if(p){setContent('');await loadPosts(family.id,session.user.id)}
@@ -125,7 +127,9 @@ export default function Home(){
         <div className="welcome card"><div className="cover"></div><div className="welcome-body"><div className="avatar large">{initial}</div><div><h1>أهلاً {name||'بك'} 👋</h1><p>شارك أخبارك وذكرياتك مع أفراد عائلتك.</p></div></div></div>
         {!family?<div className="card create-family"><h2>أنشئ عائلتك</h2><p>ابدأ مساحة العائلة ثم أضف أفراد الأسرة وشارك المنشورات.</p><input value={familyName} onChange={e=>setFamilyName(e.target.value)} placeholder="اسم العائلة"/><button className="primary" disabled={busy} onClick={createFamily}>{busy?'جارٍ الإنشاء...':'إنشاء العائلة'}</button></div>:
         <>
-          <div className="card composer"><div className="composer-row"><div className="avatar">{initial}</div><textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="ماذا تريد أن تشارك مع عائلتك؟"/></div><div className="composer-actions"><span>📷 صورة</span><span>🎥 فيديو</span><span>😊 شعور</span><button className="primary" onClick={post}>نشر</button></div></div>
+          <div className="card quick-composer"><div className="composer-row"><div className="avatar">{initial}</div><button className="composer-trigger" onClick={()=>setComposer(true)}>ما الذي تريد مشاركته يا {name||'عزيزي'}؟</button></div><div className="quick-actions"><button onClick={()=>setComposer(true)}>📷 <b>منشور</b></button><button onClick={()=>setComposer(true)}>😊 <b>شعور / نشاط</b></button><button onClick={()=>setStoryOpen(true)}>⭕ <b>حالتي</b></button></div></div>
+{}{composer&&<div className="card composer-modal"><div className="modal-head"><h2>إنشاء منشور</h2><button onClick={()=>setComposer(false)}>✕</button></div><div className="composer-user"><div className="avatar">{initial}</div><b>{name||'أنت'}</b></div><textarea autoFocus value={content} onChange={e=>setContent(e.target.value)} placeholder="ماذا يحدث في عائلتك؟"/><div className="mood-row">{['😊 سعيد','❤️ ممتن','🎉 متحمس','😢 حزين','💪 قوي'].map(x=><button key={x} onClick={()=>setMood(x)}>{x}</button>)}</div><div className="publish-row"><span>العائلة فقط 🔒</span><button className="primary" disabled={busy||!content.trim()} onClick={publishPost}>{busy?'جارٍ النشر...':'نشر المنشور'}</button></div></div>}
+{}{storyOpen&&<div className="card composer-modal"><div className="modal-head"><h2>إضافة حالتي</h2><button onClick={()=>setStoryOpen(false)}>✕</button></div><div className="story-preview"><div className="story-avatar big">{initial}</div><b>{name||'أنت'}</b><small>تختفي بعد 24 ساعة</small></div><textarea autoFocus value={storyText} onChange={e=>setStoryText(e.target.value)} placeholder="اكتب حالتك الآن..."/><div className="mood-row">{['😊 سعيد','❤️ ممتن','🎉 متحمس','😢 حزين','💪 قوي'].map(x=><button key={x} onClick={()=>setMood(x)}>{x}</button>)}</div><div className="publish-row"><span>العائلة فقط 🔒</span><button className="primary" disabled={busy||!storyText.trim()} onClick={publishStory}>نشر الحالة</button></div></div>}
           {filtered.length===0&&<div className="card empty"><div>📝</div><h3>{search?'لا توجد نتائج':'لا توجد منشورات بعد'}</h3><p>{search?'جرّب كلمة بحث أخرى.':'كن أول فرد في العائلة ينشر شيئاً.'}</p></div>}
           {filtered.map(p=><article className="card post" key={p.id}>
             <div className="post-head"><div className="avatar">{(p.author_name||'ع').slice(0,1)}</div><div><b>{p.author_name}</b><small>{new Date(p.created_at).toLocaleString('ar-LY')}</small></div><button className="dots">•••</button></div>
