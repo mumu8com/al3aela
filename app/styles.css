@@ -7,3 +7,7 @@
 
 .cover{position:relative}.cover-upload,.avatar-upload{cursor:pointer}.cover-upload{position:absolute;left:18px;bottom:18px;background:rgba(0,0,0,.6);color:#fff;padding:8px 12px;border-radius:10px;font-size:13px}.avatar-upload{position:absolute;right:-4px;bottom:-4px;background:#fff;border-radius:50%;padding:6px;box-shadow:0 2px 8px rgba(0,0,0,.2);font-size:13px}.profile-avatar{position:relative;background-size:cover;background-position:center}
 .post-actions{display:flex;gap:8px;justify-content:flex-start;padding:0 16px 10px}.post-actions button{border:0;background:transparent;cursor:pointer}.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}.modal{width:min(560px,100%);padding:20px}.modal textarea{width:100%;box-sizing:border-box;margin:12px 0}.modal-actions{display:flex;gap:10px;justify-content:flex-start}
+.google-btn{width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;background:#fff;cursor:pointer;font-weight:700;margin-bottom:12px}
+.auth-divider{display:flex;align-items:center;gap:10px;margin:10px 0;color:#888}.auth-divider:before,.auth-divider:after{content:"";height:1px;background:#ddd;flex:1}
+.auth-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.auth-tabs button{padding:10px;border:0;border-radius:9px;background:#f2f3f5;cursor:pointer}.auth-tabs button.active{background:#e7f0ff;color:#1877f2;font-weight:700}
+.auth-switch{display:block;margin:0 auto 10px}
