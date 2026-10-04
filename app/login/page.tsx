@@ -23,7 +23,7 @@ export default function Login(){
 
   async function google(){
     setError('');setMessage('');setLoading(true)
-    const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+(params.get('next')||'/')}})
+    const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+nextPath()}})
     if(error){setLoading(false);setError(error.message)}
   }
 
