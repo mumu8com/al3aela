@@ -19,7 +19,8 @@ export default function Home(){
     const {data:pf}=await supabase.from('profiles').select('full_name').eq('id',uid).maybeSingle()
     setName(pf?.full_name||'')
     const {data:fm}=await supabase.from('family_members').select('family_id,role,families(id,name,description)').eq('user_id',uid)
-    const f=(fm||[])[0]?.families
+    const rawFamily=(fm||[])[0]?.families
+    const f=Array.isArray(rawFamily)?rawFamily[0]:rawFamily
     setFamily(f||null)
     const {data:n}=await supabase.from('notifications').select('id,message,type,read_at,created_at').eq('user_id',uid).order('created_at',{ascending:false}).limit(20)
     setNotifications(n||[])
