@@ -20,12 +20,12 @@ export default function Home(){
   async function load(uid:string){
     const {data:pf}=await supabase.from('profiles').select('full_name').eq('id',uid).maybeSingle()
     setName(pf?.full_name||'')
-    const {data:fm,familyError}=await supabase.from('family_members').select('family_id,role').eq('user_id',uid).order('joined_at',{ascending:true}).limit(1)
+    const {data:fm,error:familyLoadError}=await supabase.from('family_members').select('family_id,role').eq('user_id',uid).order('joined_at',{ascending:true}).limit(1)
     let f:any=null
     const familyId=(fm||[])[0]?.family_id
     if(familyId){
       const {data:familyRow}=await supabase.from('families').select('id,name,description,created_by').eq('id',familyId).maybeSingle()
-      if(!familyError&&!familyRow) console.warn('تعذر تحميل بيانات العائلة بعد العضوية')
+      if(!familyLoadError&&!familyRow) console.warn('تعذر تحميل بيانات العائلة بعد العضوية')
       f=familyRow||null
     }
     setFamily(f||null)
