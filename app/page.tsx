@@ -8,14 +8,32 @@ type Notice={id:string;message:string;type:string;read_at:string|null;created_at
 
 export default function Home(){
   const r=useRouter()
-  const [session,setSession]=useState<any>(null),[name,setName]=useState(''),[family,setFamily]=useState<any>(null),[families,setFamilies]=useState<any[]>([])
+  const [session,setSession]=useState<any>(null),[authLoading,setAuthLoading]=useState(true),[name,setName]=useState(''),[family,setFamily]=useState<any>(null),[families,setFamilies]=useState<any[]>([])
   const [posts,setPosts]=useState<Post[]>([]),[content,setContent]=useState(''),[familyName,setFamilyName]=useState('')
   const [busy,setBusy]=useState(false),[menu,setMenu]=useState(false),[search,setSearch]=useState(''),[composer,setComposer]=useState(false),[storyOpen,setStoryOpen]=useState(false),[storyText,setStoryText]=useState(''),[mood,setMood]=useState(''),[stories,setStories]=useState<any[]>([]),[commentOpen,setCommentOpen]=useState<string|null>(null),[mediaFiles,setMediaFiles]=useState<File[]>([]),[viewStory,setViewStory]=useState<any|null>(null)
   const [notifications,setNotifications]=useState<Notice[]>([]),[showNotifications,setShowNotifications]=useState(false)
   const [familyError,setFamilyError]=useState('')
   const [familySuccess,setFamilySuccess]=useState('')
 
-  useEffect(()=>{supabase.auth.getSession().then(({data})=>{if(!data.session) r.replace('/login'); else {setSession(data.session);load(data.session.user.id)}})},[])
+  useEffect(()=>{
+    let mounted=true
+    const start=async()=>{
+      try{
+        const {data,error}=await supabase.auth.getSession()
+        if(!mounted)return
+        if(error){console.error('auth getSession failed',error);setAuthLoading(false);r.replace('/login');return}
+        if(data.session){setSession(data.session);setAuthLoading(false);await load(data.session.user.id)}
+        else{setAuthLoading(false);r.replace('/login')}
+      }catch(error){console.error('auth initialization failed',error);if(mounted){setAuthLoading(false);r.replace('/login')}}
+    }
+    start()
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,nextSession)=>{
+      if(!mounted)return
+      if(nextSession){setSession(nextSession);setAuthLoading(false);load(nextSession.user.id)}
+      else{setSession(null);setAuthLoading(false);r.replace('/login')}
+    })
+    return()=>{mounted=false;subscription.unsubscribe()}
+  },[])
 
   async function load(uid:string){
     const {data:pf}=await supabase.from('profiles').select('full_name').eq('id',uid).maybeSingle()
@@ -82,6 +100,7 @@ export default function Home(){
   async function markRead(n:Notice){if(n.read_at)return;await supabase.from('notifications').update({read_at:new Date().toISOString()}).eq('id',n.id);setNotifications(x=>x.map(y=>y.id===n.id?{...y,read_at:new Date().toISOString()}:y))}
   async function logout(){await supabase.auth.signOut();r.replace('/login')}
   const initial=(name||'ع').slice(0,1),filtered=useMemo(()=>posts.filter(p=>(p.content+' '+p.author_name).toLowerCase().includes(search.toLowerCase())),[posts,search]),unread=notifications.filter(n=>!n.read_at).length
+  if(authLoading)return <main className="auth"><div className="authbox"><div className="logo">👨‍👩‍👧‍👦</div><h1>العائلة</h1><p>جارٍ تحميل حسابك...</p></div></main>
   if(!session)return null
   return <main className="fbapp" dir="rtl" lang="ar">
     <header className="topbar"><button className="brand" onClick={()=>r.push('/')}>العائلة <span>al3aela</span></button><div className="topsearch">🔎 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث في العائلة"/></div><nav className="topnav"><button onClick={()=>r.push('/')}>⌂<span>الرئيسية</span></button><button onClick={()=>r.push('/tree')}>🌳<span>الشجرة</span></button><button onClick={()=>r.push('/profile')}>👤<span>ملفي</span></button><button className="notify-btn" onClick={()=>setShowNotifications(!showNotifications)}>🔔{unread>0&&<b>{unread}</b>}</button><button onClick={()=>setMenu(!menu)}>☰</button></nav>{showNotifications&&<div className="notifications"><h3>الإشعارات</h3>{notifications.length?notifications.map(n=><button className={n.read_at?'read':''} key={n.id} onClick={()=>markRead(n)}><span>{n.type==='like'?'👍':'💬'}</span><div><b>{n.message}</b><small>{new Date(n.created_at).toLocaleString('ar-LY')}</small></div></button>):<p>لا توجد إشعارات</p>}</div>}{menu&&<div className="dropdown"><button onClick={()=>r.push('/profile')}>الملف الشخصي</button><button onClick={logout}>تسجيل الخروج</button></div>}</header>
