@@ -4,7 +4,7 @@ import {supabase} from '../lib/supabase'
 import {useRouter} from 'next/navigation'
 
 type Post={id:string;content:string;created_at:string;author_id:string;author_name?:string;likes:number;liked:boolean;comments:any[];commentText:string}
-type Notice={id:string;message:string;read_at:string|null;created_at:string}
+type Notice={id:string;message:string;type:string;read_at:string|null;created_at:string}
 
 export default function Home(){
   const r=useRouter()
@@ -21,7 +21,7 @@ export default function Home(){
     const {data:fm}=await supabase.from('family_members').select('family_id,role,families(id,name,description)').eq('user_id',uid)
     const f=(fm||[])[0]?.families
     setFamily(f||null)
-    const {data:n}=await supabase.from('notifications').select('id,message,read_at,created_at').eq('user_id',uid).order('created_at',{ascending:false}).limit(20)
+    const {data:n}=await supabase.from('notifications').select('id,message,type,read_at,created_at').eq('user_id',uid).order('created_at',{ascending:false}).limit(20)
     setNotifications(n||[])
     if(f) await loadPosts(f.id,uid)
   }
